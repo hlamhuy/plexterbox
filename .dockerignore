@@ -1,0 +1,23 @@
+# Dev tooling and local state
+web/node_modules/
+cmd/server/dist/
+*.exe
+plexterboxd
+server
+testcf
+
+# Git / editor metadata
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/
+.dockerignore
+
+# Docs / scripts not needed at runtime
+*.md
+Makefile
+
+# Local data (never embed in image)
+*.db
+session.json

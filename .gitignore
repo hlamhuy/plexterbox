@@ -1,0 +1,14 @@
+# Compiled binaries
+plexterboxd
+plexterboxd.exe
+
+# Frontend build output embedded into Go binary
+cmd/server/dist/
+
+# macOS
+.DS_Store
+
+# Go test cache / coverage
+*.test
+*.out
+coverage.html
