@@ -1,0 +1,17 @@
+services:
+    plexterboxd:
+        build: .
+        image: plexterboxd
+        container_name: plexterboxd
+        restart: unless-stopped
+        ports:
+            - '12349:12349'
+        volumes:
+            # Persists session.json and plexterboxd.db across container restarts/updates.
+            - plexterboxd-data:/root/.config/plexterboxd
+        environment:
+            # Override the default port inside the container if needed.
+            # PORT: 12349
+
+volumes:
+    plexterboxd-data:
