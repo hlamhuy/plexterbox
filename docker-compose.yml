@@ -8,9 +8,10 @@ services:
             - '12349:12349'
         volumes:
             # Persists session.json and plexterbox.db across container restarts/updates.
-            - plexterbox-data:/root/.config/plexterbox
+            - plexterbox-data:/config
         environment:
-            # Override the default port inside the container if needed.
+            DATA_DIR: /config
+            # Override the listening port if needed:
             # PORT: 12349
 
 volumes:

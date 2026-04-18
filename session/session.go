@@ -21,11 +21,16 @@ type Data struct {
 }
 
 func configPath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	var appDir string
+	if d := os.Getenv("DATA_DIR"); d != "" {
+		appDir = d
+	} else {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		appDir = filepath.Join(dir, "plexterbox")
 	}
-	appDir := filepath.Join(dir, "plexterbox")
 	if err := os.MkdirAll(appDir, 0700); err != nil {
 		return "", err
 	}

@@ -24,17 +24,19 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o plexterbox ./cmd/serve
 
 
 # ── Stage 3: minimal runtime image ───────────────────────────────────────────
-FROM alpine:3.21
+FROM alpine:latest
 
 # ca-certificates: needed for outbound HTTPS (Plex, Letterboxd APIs)
-RUN apk add --no-cache ca-certificates
+# tzdata: enables TZ env var for user-configurable timezone
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 COPY --from=go-builder /app/plexterbox .
 
-# Data dir: mount a volume here to persist session.json and plexterbox.db
-# across container restarts.
-VOLUME ["/root/.config/plexterbox"]
+# DATA_DIR tells the app where to store session.json and plexterbox.db.
+# Mount a volume here to persist data across container restarts/updates.
+ENV DATA_DIR=/config
+VOLUME ["/config"]
 
 EXPOSE 12349
 
