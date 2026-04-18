@@ -20,7 +20,7 @@ COPY . .
 # Copy the built frontend into the embed directory
 COPY --from=ui-builder /app/cmd/server/dist ./cmd/server/dist
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o plexterboxd ./cmd/server/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o plexterbox ./cmd/server/
 
 
 # ── Stage 3: minimal runtime image ───────────────────────────────────────────
@@ -30,12 +30,12 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
-COPY --from=go-builder /app/plexterboxd .
+COPY --from=go-builder /app/plexterbox .
 
-# Data dir: mount a volume here to persist session.json and plexterboxd.db
+# Data dir: mount a volume here to persist session.json and plexterbox.db
 # across container restarts.
-VOLUME ["/root/.config/plexterboxd"]
+VOLUME ["/root/.config/plexterbox"]
 
 EXPOSE 12349
 
-ENTRYPOINT ["./plexterboxd"]
+ENTRYPOINT ["./plexterbox"]

@@ -2,9 +2,6 @@
 web/node_modules/
 cmd/server/dist/
 *.exe
-plexterboxd
-server
-testcf
 
 # Git / editor metadata
 .git/

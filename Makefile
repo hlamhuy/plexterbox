@@ -1,4 +1,4 @@
-BIN      := plexterboxd
+BIN      := plexterbox
 WEB_DIR  := web
 DIST_DIR := cmd/server/dist
 
@@ -18,7 +18,7 @@ ui:
 
 ## docker: build the Docker image
 docker:
-	docker build -t plexterboxd .
+	docker build -t plexterbox .
 
 ## docker-up: start with docker compose (detached)
 docker-up:

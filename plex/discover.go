@@ -147,7 +147,7 @@ func (c *DiscoverClient) setHeaders(req *http.Request) {
 	q := req.URL.Query()
 	q.Set("X-Plex-Token", c.Token)
 	q.Set("X-Plex-Client-Identifier", c.ClientID)
-	q.Set("X-Plex-Product", "Plexterboxd")
+	q.Set("X-Plex-Product", "Plexterbox")
 	q.Set("X-Plex-Language", "en")
 	req.URL.RawQuery = q.Encode()
 }

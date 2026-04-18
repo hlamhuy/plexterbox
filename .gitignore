@@ -1,7 +1,3 @@
-# Compiled binaries
-plexterboxd
-plexterboxd.exe
-
 # Frontend build output embedded into Go binary
 cmd/server/dist/
 

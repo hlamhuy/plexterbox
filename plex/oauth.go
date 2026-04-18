@@ -12,8 +12,8 @@ import (
 
 const (
 	plexPinsURL   = "https://plex.tv/api/v2/pins"
-	plexAuthURL   = "https://app.plex.tv/auth#!?clientID=%s&code=%s&context%%5Bdevice%%5D%%5Bproduct%%5D=Plexterboxd"
-	plexProductName = "Plexterboxd"
+	plexAuthURL   = "https://app.plex.tv/auth#!?clientID=%s&code=%s&context%%5Bdevice%%5D%%5Bproduct%%5D=Plexterbox"
+	plexProductName = "Plexterbox"
 )
 
 // Pin represents a Plex OAuth pin response.
@@ -107,7 +107,7 @@ func GetAccountInfo(token string) (AccountInfo, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Plex-Token", token)
-	req.Header.Set("X-Plex-Client-Identifier", "plexterboxd")
+	req.Header.Set("X-Plex-Client-Identifier", "plexterbox")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

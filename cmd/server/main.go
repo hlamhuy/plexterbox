@@ -124,7 +124,7 @@ func main() {
 	// In dev, Vite handles this instead (npm run dev).
 	mux.Handle("/", spaHandler())
 
-	log.Printf("[startup] plexterboxd listening on http://localhost%s", addr)
+	log.Printf("[startup] plexterbox listening on http://localhost%s", addr)
 	log.Fatal(http.ListenAndServe(addr, loggingMiddleware(corsMiddleware(mux))))
 }
 

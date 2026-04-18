@@ -200,8 +200,8 @@ func (c *AccountClient) RecentWatchActivities(count int) (map[string]string, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Plex-Token", c.Token)
-	req.Header.Set("X-Plex-Client-Identifier", "plexterboxd")
-	req.Header.Set("X-Plex-Product", "plexterboxd")
+	req.Header.Set("X-Plex-Client-Identifier", "plexterbox")
+	req.Header.Set("X-Plex-Product", "plexterbox")
 	req.Header.Set("X-Plex-Platform", "Go")
 	req.Header.Set("Origin", "https://app.plex.tv")
 
@@ -264,8 +264,8 @@ func (c *AccountClient) AllWatchedMovies() ([]AccountHistoryEntry, error) {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Plex-Token", c.Token)
-		req.Header.Set("X-Plex-Client-Identifier", "plexterboxd")
-		req.Header.Set("X-Plex-Product", "plexterboxd")
+		req.Header.Set("X-Plex-Client-Identifier", "plexterbox")
+		req.Header.Set("X-Plex-Product", "plexterbox")
 		req.Header.Set("X-Plex-Platform", "Go")
 		req.Header.Set("Origin", "https://app.plex.tv")
 
@@ -343,8 +343,8 @@ func (c *AccountClient) FetchAllRatings() (map[string]int, error) {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Plex-Token", c.Token)
-		req.Header.Set("X-Plex-Client-Identifier", "plexterboxd")
-		req.Header.Set("X-Plex-Product", "plexterboxd")
+		req.Header.Set("X-Plex-Client-Identifier", "plexterbox")
+		req.Header.Set("X-Plex-Product", "plexterbox")
 		req.Header.Set("X-Plex-Platform", "Go")
 		req.Header.Set("Origin", "https://app.plex.tv")
 
@@ -419,8 +419,8 @@ func (c *AccountClient) UpdateActivityDate(activityID, newDate string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Plex-Token", c.Token)
-	req.Header.Set("X-Plex-Client-Identifier", "plexterboxd")
-	req.Header.Set("X-Plex-Product", "plexterboxd")
+	req.Header.Set("X-Plex-Client-Identifier", "plexterbox")
+	req.Header.Set("X-Plex-Product", "plexterbox")
 	req.Header.Set("X-Plex-Platform", "Go")
 	req.Header.Set("Origin", "https://app.plex.tv")
 
