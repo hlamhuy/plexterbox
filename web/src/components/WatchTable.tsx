@@ -26,6 +26,8 @@ interface WatchTableProps {
     onDateEdited?: () => void;
 }
 
+const PAGE_SIZE = 15;
+
 export default function WatchTable({
     events,
     importStatuses,
@@ -34,6 +36,14 @@ export default function WatchTable({
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editDate, setEditDate] = useState('');
     const [saving, setSaving] = useState(false);
+    const [page, setPage] = useState(1);
+
+    const totalPages = Math.max(1, Math.ceil(events.length / PAGE_SIZE));
+    const clampedPage = Math.min(page, totalPages);
+    const pageEvents = events.slice(
+        (clampedPage - 1) * PAGE_SIZE,
+        clampedPage * PAGE_SIZE,
+    );
 
     const startEdit = (e: WatchEvent) => {
         setEditingId(e.id);
@@ -90,7 +100,7 @@ export default function WatchTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {events.map((e) => {
+                    {pageEvents.map((e) => {
                         const status = importStatuses?.[e.id];
                         return (
                             <tr
@@ -216,6 +226,52 @@ export default function WatchTable({
                     })}
                 </tbody>
             </table>
+            {totalPages > 1 && (
+                <div className='flex items-center justify-between mt-4 text-sm text-zinc-400'>
+                    <span>
+                        {(clampedPage - 1) * PAGE_SIZE + 1}–
+                        {Math.min(clampedPage * PAGE_SIZE, events.length)} of{' '}
+                        {events.length}
+                    </span>
+                    <div className='flex items-center gap-1'>
+                        <button
+                            onClick={() => setPage(1)}
+                            disabled={clampedPage === 1}
+                            className='px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors'
+                            title='First page'
+                        >
+                            «
+                        </button>
+                        <button
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={clampedPage === 1}
+                            className='px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors'
+                        >
+                            ‹
+                        </button>
+                        <span className='px-2'>
+                            {clampedPage} / {totalPages}
+                        </span>
+                        <button
+                            onClick={() =>
+                                setPage((p) => Math.min(totalPages, p + 1))
+                            }
+                            disabled={clampedPage === totalPages}
+                            className='px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors'
+                        >
+                            ›
+                        </button>
+                        <button
+                            onClick={() => setPage(totalPages)}
+                            disabled={clampedPage === totalPages}
+                            className='px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors'
+                            title='Last page'
+                        >
+                            »
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

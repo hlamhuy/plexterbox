@@ -12,9 +12,12 @@ import (
 )
 
 // plexFetchUpsert fetches Plex watch history + ratings and upserts them into the DB.
-// stopAtID halts pagination at that activity ID (autosync); pass "" for a full 60-day fetch.
-func plexFetchUpsert(client *plex.AccountClient, stopAtID string) error {
-	entries, err := client.AllWatchedMovies(stopAtID)
+// On first-ever fetch (no last_seen_id recorded) all history is fetched; subsequent
+// fetches stop at the last seen activity ID.
+func plexFetchUpsert(client *plex.AccountClient) error {
+	stopAtID := plexterboxdb.LastSeenID(appDB, "plex")
+	noLimit := stopAtID == ""
+	entries, err := client.AllWatchedMovies(stopAtID, noLimit)
 	if err != nil {
 		return fmt.Errorf("fetch history: %w", err)
 	}
@@ -54,9 +57,12 @@ func plexFetchUpsert(client *plex.AccountClient, stopAtID string) error {
 }
 
 // lbFetchUpsert fetches the Letterboxd diary and upserts entries into the DB.
-// stopAtID halts pagination at that viewing ID (autosync); pass "" for a full 60-day fetch.
-func lbFetchUpsert(client *letterboxd.Client, stopAtID string) error {
-	entries, err := client.FetchDiary(client.Username, stopAtID)
+// On first-ever fetch (no last_seen_id recorded) all history is fetched; subsequent
+// fetches stop at the last seen viewing ID.
+func lbFetchUpsert(client *letterboxd.Client) error {
+	stopAtID := plexterboxdb.LastSeenID(appDB, "letterboxd")
+	noLimit := stopAtID == ""
+	entries, err := client.FetchDiary(client.Username, stopAtID, noLimit)
 	if err != nil {
 		return fmt.Errorf("fetch diary: %w", err)
 	}

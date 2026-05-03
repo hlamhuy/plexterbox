@@ -50,10 +50,11 @@ var (
 	nextPageRe = regexp.MustCompile(`class="next"`)
 )
 
-// FetchDiary scrapes the Letterboxd diary for the logged-in user, up to 60 days back.
+// FetchDiary scrapes the Letterboxd diary for the logged-in user.
 // A 3500ms cooldown is applied between page requests.
-// stopAtID is a viewing ID at which pagination stops (used by autosync); pass "" to fetch the full window.
-func (c *Client) FetchDiary(username, stopAtID string) ([]DiaryEntry, error) {
+// stopAtID is a viewing ID at which pagination stops; pass "" to disable.
+// noLimit disables the 60-day cutoff (used on first-ever fetch to get all history).
+func (c *Client) FetchDiary(username, stopAtID string, noLimit bool) ([]DiaryEntry, error) {
 	var all []DiaryEntry
 	cutoff := time.Now().AddDate(0, 0, -60)
 	page := 1
@@ -106,10 +107,12 @@ func (c *Client) FetchDiary(username, stopAtID string) ([]DiaryEntry, error) {
 				done = true
 				break
 			}
-			t, err := time.Parse("2006-01-02", entry.WatchedOn)
-			if err == nil && t.Before(cutoff) {
-				done = true
-				break
+			if !noLimit {
+				t, err := time.Parse("2006-01-02", entry.WatchedOn)
+				if err == nil && t.Before(cutoff) {
+					done = true
+					break
+				}
 			}
 			all = append(all, *entry)
 		}

@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	plexterboxdb "plexterbox/db"
 )
 
 // AutoSyncConfig holds the current auto-sync settings.
@@ -115,15 +113,13 @@ func runSafeModeJob(direction string) {
 	lbMu.Unlock()
 
 	if (direction == "full" || direction == "plexToLb") && pc != nil {
-		stopID := plexterboxdb.LastSeenID(appDB, "plex")
-		if err := plexFetchUpsert(pc, stopID); err != nil {
+		if err := plexFetchUpsert(pc); err != nil {
 			log.Printf("[autosync] plex error: %v", err)
 		}
 	}
 
 	if (direction == "full" || direction == "lbToPlex") && lc != nil && lc.Username != "" {
-		stopID := plexterboxdb.LastSeenID(appDB, "letterboxd")
-		if err := lbFetchUpsert(lc, stopID); err != nil {
+		if err := lbFetchUpsert(lc); err != nil {
 			log.Printf("[autosync] lb error: %v", err)
 		}
 	}

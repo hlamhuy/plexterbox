@@ -231,11 +231,11 @@ func (c *AccountClient) RecentWatchActivities(count int) (map[string]string, err
 	return m, nil
 }
 
-// AllWatchedMovies fetches movies watched in the past 60 days from the Plex account.
-// stopAtID halts pagination when that activity ID is encountered (used by autosync);
-// pass "" to fetch the full 60-day window.
+// AllWatchedMovies fetches watched movies from the Plex account.
+// stopAtID halts pagination when that activity ID is encountered.
+// noLimit disables the 60-day cutoff (used on first-ever fetch to get all history).
 // A 3500ms cooldown is applied between requests.
-func (c *AccountClient) AllWatchedMovies(stopAtID string) ([]AccountHistoryEntry, error) {
+func (c *AccountClient) AllWatchedMovies(stopAtID string, noLimit bool) ([]AccountHistoryEntry, error) {
 	var all []AccountHistoryEntry
 	var cursor *string
 	requests := 0
@@ -295,10 +295,12 @@ func (c *AccountClient) AllWatchedMovies(stopAtID string) ([]AccountHistoryEntry
 				done = true
 				break
 			}
-			t, err := time.Parse(time.RFC3339, node.Date)
-			if err == nil && t.Before(cutoff) {
-				done = true
-				break
+			if !noLimit {
+				t, err := time.Parse(time.RFC3339, node.Date)
+				if err == nil && t.Before(cutoff) {
+					done = true
+					break
+				}
 			}
 			if node.MetadataItem.Type == "MOVIE" {
 				all = append(all, node)
