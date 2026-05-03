@@ -33,7 +33,7 @@ To use a different port:
 ```yaml
 # docker-compose.yml
 ports:
-  - "8080:12349"
+    - '8080:12349'
 ```
 
 ---
@@ -72,11 +72,11 @@ cd web && npm install && npm run dev
 
 ## Configuration
 
-| Method | Example |
-|---|---|
+| Method  | Example                              |
+| ------- | ------------------------------------ |
 | Default | `./plexterbox` → listens on `:12349` |
-| Flag | `./plexterbox -port 8080` |
-| Env var | `PORT=8080 ./plexterbox` |
+| Flag    | `./plexterbox -port 8080`            |
+| Env var | `PORT=8080 ./plexterbox`             |
 
 ---
 

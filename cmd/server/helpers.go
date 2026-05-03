@@ -12,8 +12,9 @@ import (
 )
 
 // plexFetchUpsert fetches Plex watch history + ratings and upserts them into the DB.
-func plexFetchUpsert(client *plex.AccountClient) error {
-	entries, err := client.AllWatchedMovies()
+// stopAtID halts pagination at that activity ID (autosync); pass "" for a full 60-day fetch.
+func plexFetchUpsert(client *plex.AccountClient, stopAtID string) error {
+	entries, err := client.AllWatchedMovies(stopAtID)
 	if err != nil {
 		return fmt.Errorf("fetch history: %w", err)
 	}
@@ -53,8 +54,9 @@ func plexFetchUpsert(client *plex.AccountClient) error {
 }
 
 // lbFetchUpsert fetches the Letterboxd diary and upserts entries into the DB.
-func lbFetchUpsert(client *letterboxd.Client) error {
-	entries, err := client.FetchDiary(client.Username)
+// stopAtID halts pagination at that viewing ID (autosync); pass "" for a full 60-day fetch.
+func lbFetchUpsert(client *letterboxd.Client, stopAtID string) error {
+	entries, err := client.FetchDiary(client.Username, stopAtID)
 	if err != nil {
 		return fmt.Errorf("fetch diary: %w", err)
 	}
@@ -64,6 +66,7 @@ func lbFetchUpsert(client *letterboxd.Client) error {
 		year := 0
 		fmt.Sscanf(e.Year, "%d", &year)
 		dbInputs = append(dbInputs, plexterboxdb.DiaryEntryInput{
+			ViewingID: e.ViewingID,
 			Slug:      e.Slug,
 			Title:     e.Title,
 			Year:      year,

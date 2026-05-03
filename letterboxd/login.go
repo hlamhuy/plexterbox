@@ -1,6 +1,7 @@
 package letterboxd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,31 @@ import (
 	"strings"
 	"time"
 )
+
+const (
+	chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+	chromeSecChUa   = `"Chromium";v="136", "Google Chrome";v="136", "Not-A.Brand";v="8"`
+)
+
+// addChromeHeaders sets the browser fingerprint headers that Cloudflare checks.
+// secFetchDest/Mode/Site should match the request type (e.g. "document"/"navigate"/"none" for a top-level GET).
+func addChromeHeaders(req *http.Request, secFetchDest, secFetchMode, secFetchSite string) {
+	req.Header.Set("Sec-Ch-Ua", chromeSecChUa)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", `"Windows"`)
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Sec-Fetch-Dest", secFetchDest)
+	req.Header.Set("Sec-Fetch-Mode", secFetchMode)
+	req.Header.Set("Sec-Fetch-Site", secFetchSite)
+}
+
+// checkCloudflareChallenge returns an error if the response body looks like a CF challenge page.
+func checkCloudflareChallenge(body []byte) error {
+	if bytes.Contains(body, []byte("Just a moment")) && bytes.Contains(body, []byte("challenges.cloudflare.com")) {
+		return fmt.Errorf("Cloudflare is blocking the request — try again in a moment, or ensure your network is not flagged as a bot source")
+	}
+	return nil
+}
 
 type loginResponse struct {
 	Result   string   `json:"result"`
@@ -33,7 +59,7 @@ type PendingLogin struct {
 // Login authenticates with Letterboxd using username and password.
 // If the account has 2FA, it returns (nil, pendingLogin, ErrTOTPRequired).
 func Login(username, password string) (*Client, *PendingLogin, error) {
-	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+	userAgent := chromeUserAgent
 
 	jar, _ := cookiejar.New(nil)
 	httpClient := &http.Client{
@@ -47,16 +73,23 @@ func Login(username, password string) (*Client, *PendingLogin, error) {
 		return nil, nil, fmt.Errorf("building sign-in request: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	addChromeHeaders(req, "document", "navigate", "none")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching sign-in page: %w", err)
 	}
+	rawBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("sign-in page returned status %d", resp.StatusCode)
+	}
+	if err := checkCloudflareChallenge(rawBody); err != nil {
+		return nil, nil, err
 	}
 
 	u, _ := url.Parse("https://letterboxd.com")
@@ -82,9 +115,11 @@ func Login(username, password string) (*Client, *PendingLogin, error) {
 	}
 	loginReq.Header.Set("User-Agent", userAgent)
 	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	loginReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	loginReq.Header.Set("Origin", "https://letterboxd.com")
 	loginReq.Header.Set("Referer", "https://letterboxd.com/sign-in/")
+	addChromeHeaders(loginReq, "empty", "cors", "same-origin")
 
 	loginResp, err := httpClient.Do(loginReq)
 	if err != nil {
@@ -94,6 +129,10 @@ func Login(username, password string) (*Client, *PendingLogin, error) {
 
 	body, _ := io.ReadAll(loginResp.Body)
 	log.Printf("[lb-login] POST status: %d", loginResp.StatusCode)
+
+	if err := checkCloudflareChallenge(body); err != nil {
+		return nil, nil, err
+	}
 
 	var result loginResponse
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -141,9 +180,11 @@ func (p *PendingLogin) SubmitTOTP(code string) (*Client, error) {
 	}
 	req.Header.Set("User-Agent", p.UserAgent)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("Origin", "https://letterboxd.com")
 	req.Header.Set("Referer", "https://letterboxd.com/sign-in/")
+	addChromeHeaders(req, "empty", "cors", "same-origin")
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -153,6 +194,10 @@ func (p *PendingLogin) SubmitTOTP(code string) (*Client, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 	log.Printf("[lb-login] TOTP POST status: %d", resp.StatusCode)
+
+	if err := checkCloudflareChallenge(body); err != nil {
+		return nil, err
+	}
 
 	var result loginResponse
 	if err := json.Unmarshal(body, &result); err != nil {

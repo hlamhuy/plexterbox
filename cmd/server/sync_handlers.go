@@ -25,14 +25,14 @@ func handleSync(w http.ResponseWriter, r *http.Request) {
 	var syncErrors []string
 
 	if pc != nil {
-		if err := plexFetchUpsert(pc); err != nil {
+		if err := plexFetchUpsert(pc, ""); err != nil {
 			log.Printf("[sync] plex error: %v", err)
 			syncErrors = append(syncErrors, "plex: "+err.Error())
 		}
 	}
 
 	if lc != nil && lc.Username != "" {
-		if err := lbFetchUpsert(lc); err != nil {
+		if err := lbFetchUpsert(lc, ""); err != nil {
 			log.Printf("[sync] lb error: %v", err)
 			syncErrors = append(syncErrors, "letterboxd: "+err.Error())
 		}

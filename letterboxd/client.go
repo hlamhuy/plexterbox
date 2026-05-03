@@ -2,6 +2,7 @@ package letterboxd
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -11,13 +12,15 @@ import (
 	"time"
 
 	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
-// NewChromeTransport creates an http.Transport that spoofs Chrome's TLS fingerprint
-// but forces HTTP/1.1 to avoid h2 framing issues.
-func NewChromeTransport() *http.Transport {
-	return &http.Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+// NewChromeTransport creates an http.RoundTripper that spoofs Chrome's TLS
+// fingerprint and negotiates HTTP/2, matching real Chrome browser behaviour.
+// Forcing HTTP/1.1 (the old approach) is a detectable Cloudflare signal.
+func NewChromeTransport() http.RoundTripper {
+	return &http2.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
 				host = addr
@@ -29,16 +32,11 @@ func NewChromeTransport() *http.Transport {
 				return nil, fmt.Errorf("dial: %w", err)
 			}
 
-			// Get Chrome's TLS spec and override ALPN to HTTP/1.1 only
+			// Use Chrome's full TLS spec including h2 in ALPN.
 			spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 			if err != nil {
 				conn.Close()
 				return nil, fmt.Errorf("utls spec: %w", err)
-			}
-			for _, ext := range spec.Extensions {
-				if alpn, ok := ext.(*utls.ALPNExtension); ok {
-					alpn.AlpnProtocols = []string{"http/1.1"}
-				}
 			}
 
 			tlsConn := utls.UClient(conn, &utls.Config{

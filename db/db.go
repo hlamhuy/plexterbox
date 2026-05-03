@@ -27,6 +27,7 @@ type PlexEntryInput struct {
 
 // DiaryEntryInput is a single entry from the Letterboxd diary scraper.
 type DiaryEntryInput struct {
+	ViewingID string  // data-viewing-id — stable diary entry ID
 	Slug      string
 	Title     string
 	Year      int
@@ -134,6 +135,7 @@ func migrate(db *sql.DB) error {
 			lb_watched_on    TEXT,
 			lb_rating        REAL,
 			lb_rewatch       INTEGER NOT NULL DEFAULT 0,
+			lb_viewing_id    TEXT,
 
 			-- Sync state
 			in_plex          INTEGER NOT NULL DEFAULT 0,
@@ -149,7 +151,8 @@ func migrate(db *sql.DB) error {
 
 		CREATE TABLE IF NOT EXISTS sync_log (
 			source          TEXT PRIMARY KEY,
-			last_fetched_at TEXT NOT NULL
+			last_fetched_at TEXT NOT NULL,
+			last_seen_id    TEXT
 		);
 	`)
 	if err != nil {
@@ -158,6 +161,16 @@ func migrate(db *sql.DB) error {
 
 	// Add plex_rewatch column for existing databases.
 	_, _ = db.Exec(`ALTER TABLE watch_events ADD COLUMN plex_rewatch INTEGER NOT NULL DEFAULT 0`)
+
+	// Add lb_viewing_id for existing databases.
+	_, _ = db.Exec(`ALTER TABLE watch_events ADD COLUMN lb_viewing_id TEXT`)
+	// Full unique index (not partial) — required for ON CONFLICT(lb_viewing_id) upsert syntax.
+	// SQLite treats NULLs as distinct, so multiple NULL values are allowed.
+	_, _ = db.Exec(`DROP INDEX IF EXISTS idx_lb_viewing_id`)
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_lb_viewing_id ON watch_events(lb_viewing_id)`)
+
+	// Add last_seen_id to sync_log for existing databases.
+	_, _ = db.Exec(`ALTER TABLE sync_log ADD COLUMN last_seen_id TEXT`)
 
 	return nil
 }
@@ -256,11 +269,17 @@ func UpsertPlexEntries(db *sql.DB, entries []PlexEntryInput) error {
 		log.Printf("[db] auto-detect plex rewatch error: %v", err)
 	}
 
-	return recordFetch(db, "plex")
+	lastSeenID := ""
+	if len(entries) > 0 {
+		lastSeenID = entries[0].ActivityID
+	}
+	return recordFetch(db, "plex", lastSeenID)
 }
 
 // UpsertDiaryEntries writes Letterboxd diary entries into the DB.
-// Keyed on (lb_slug, lb_watched_on) — one row per distinct watch date.
+// When an entry has a ViewingID it is keyed on lb_viewing_id (stable), so a
+// date change on Letterboxd updates the existing row instead of inserting a
+// duplicate. Entries without a ViewingID fall back to (lb_slug, lb_watched_on).
 // If a matching Plex-only row exists (same title + same date, no LB data yet),
 // it is merged in-place instead of creating a duplicate row.
 func UpsertDiaryEntries(db *sql.DB, entries []DiaryEntryInput) error {
@@ -274,6 +293,7 @@ func UpsertDiaryEntries(db *sql.DB, entries []DiaryEntryInput) error {
 	mergeStmt, err := tx.Prepare(`
 		UPDATE watch_events SET
 			lb_slug       = ?,
+			lb_viewing_id = ?,
 			lb_watched_on = ?,
 			lb_rating     = ?,
 			lb_rewatch    = ?,
@@ -292,22 +312,57 @@ func UpsertDiaryEntries(db *sql.DB, entries []DiaryEntryInput) error {
 	}
 	defer mergeStmt.Close()
 
-	// Fall-back: normal upsert keyed on (lb_slug, lb_watched_on).
-	upsertStmt, err := tx.Prepare(`
-		INSERT INTO watch_events
-			(title, year, lb_slug, lb_watched_on, lb_rating, lb_rewatch, in_lb)
-		VALUES (?, ?, ?, ?, ?, ?, 1)
-		ON CONFLICT(lb_slug, lb_watched_on) DO UPDATE SET
-			title        = excluded.title,
-			year         = excluded.year,
-			lb_rating    = excluded.lb_rating,
-			lb_rewatch   = excluded.lb_rewatch,
-			in_lb        = 1
+	// Backfill lb_viewing_id on any existing LB row that matches by (slug, date)
+	// but has no viewing ID yet. This prevents a UNIQUE(lb_slug, lb_watched_on)
+	// conflict when we then upsert by lb_viewing_id below.
+	backfillStmt, err := tx.Prepare(`
+		UPDATE watch_events
+		SET lb_viewing_id = ?
+		WHERE lb_viewing_id IS NULL
+		  AND lb_slug = ?
+		  AND lb_watched_on = ?
 	`)
 	if err != nil {
 		return err
 	}
-	defer upsertStmt.Close()
+	defer backfillStmt.Close()
+
+	// Upsert keyed on lb_viewing_id. Updates lb_watched_on/lb_slug so a date
+	// change on Letterboxd is reflected without creating a duplicate row.
+	upsertByViewingIDStmt, err := tx.Prepare(`
+		INSERT INTO watch_events
+			(title, year, lb_slug, lb_viewing_id, lb_watched_on, lb_rating, lb_rewatch, in_lb)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+		ON CONFLICT(lb_viewing_id) DO UPDATE SET
+			title         = excluded.title,
+			year          = excluded.year,
+			lb_slug       = excluded.lb_slug,
+			lb_watched_on = excluded.lb_watched_on,
+			lb_rating     = excluded.lb_rating,
+			lb_rewatch    = excluded.lb_rewatch,
+			in_lb         = 1
+	`)
+	if err != nil {
+		return err
+	}
+	defer upsertByViewingIDStmt.Close()
+
+	// Fall-back: upsert keyed on (lb_slug, lb_watched_on) for entries without a viewing ID.
+	upsertBySlugDateStmt, err := tx.Prepare(`
+		INSERT INTO watch_events
+			(title, year, lb_slug, lb_watched_on, lb_rating, lb_rewatch, in_lb)
+		VALUES (?, ?, ?, ?, ?, ?, 1)
+		ON CONFLICT(lb_slug, lb_watched_on) DO UPDATE SET
+			title      = excluded.title,
+			year       = excluded.year,
+			lb_rating  = excluded.lb_rating,
+			lb_rewatch = excluded.lb_rewatch,
+			in_lb      = 1
+	`)
+	if err != nil {
+		return err
+	}
+	defer upsertBySlugDateStmt.Close()
 
 	for _, e := range entries {
 		rewatch := 0
@@ -315,13 +370,33 @@ func UpsertDiaryEntries(db *sql.DB, entries []DiaryEntryInput) error {
 			rewatch = 1
 		}
 
-		res, err := mergeStmt.Exec(e.Slug, e.WatchedOn, e.Rating, rewatch, e.Title, e.WatchedOn)
+		var viewingID *string
+		if e.ViewingID != "" {
+			viewingID = &e.ViewingID
+		}
+
+		// Step 1: try to merge into a Plex-only row with matching title + date.
+		res, err := mergeStmt.Exec(e.Slug, viewingID, e.WatchedOn, e.Rating, rewatch, e.Title, e.WatchedOn)
 		if err != nil {
 			return err
 		}
 		n, _ := res.RowsAffected()
-		if n == 0 {
-			if _, err := upsertStmt.Exec(e.Title, e.Year, e.Slug, e.WatchedOn, e.Rating, rewatch); err != nil {
+		if n > 0 {
+			continue
+		}
+
+		// Step 2: upsert by viewing ID or (slug, date) fallback.
+		if e.ViewingID != "" {
+			// Backfill any existing row that matches slug+date so the upcoming
+			// insert by lb_viewing_id doesn't trip the (lb_slug, lb_watched_on) constraint.
+			if _, err := backfillStmt.Exec(e.ViewingID, e.Slug, e.WatchedOn); err != nil {
+				return err
+			}
+			if _, err := upsertByViewingIDStmt.Exec(e.Title, e.Year, e.Slug, e.ViewingID, e.WatchedOn, e.Rating, rewatch); err != nil {
+				return err
+			}
+		} else {
+			if _, err := upsertBySlugDateStmt.Exec(e.Title, e.Year, e.Slug, e.WatchedOn, e.Rating, rewatch); err != nil {
 				return err
 			}
 		}
@@ -331,14 +406,20 @@ func UpsertDiaryEntries(db *sql.DB, entries []DiaryEntryInput) error {
 		return err
 	}
 
-	return recordFetch(db, "letterboxd")
+	lastSeenID := ""
+	if len(entries) > 0 {
+		lastSeenID = entries[0].ViewingID
+	}
+	return recordFetch(db, "letterboxd", lastSeenID)
 }
 
-func recordFetch(db *sql.DB, source string) error {
+func recordFetch(db *sql.DB, source, lastSeenID string) error {
 	_, err := db.Exec(`
-		INSERT INTO sync_log (source, last_fetched_at) VALUES (?, ?)
-		ON CONFLICT(source) DO UPDATE SET last_fetched_at = excluded.last_fetched_at
-	`, source, time.Now().UTC().Format(time.RFC3339))
+		INSERT INTO sync_log (source, last_fetched_at, last_seen_id) VALUES (?, ?, NULLIF(?, ''))
+		ON CONFLICT(source) DO UPDATE SET
+			last_fetched_at = excluded.last_fetched_at,
+			last_seen_id    = CASE WHEN excluded.last_seen_id IS NOT NULL THEN excluded.last_seen_id ELSE sync_log.last_seen_id END
+	`, source, time.Now().UTC().Format(time.RFC3339), lastSeenID)
 	return err
 }
 
@@ -460,6 +541,18 @@ func LastFetchedAt(db *sql.DB, source string) string {
 		return ""
 	}
 	return t
+}
+
+// LastSeenID returns the most recently seen entry ID for the given source.
+// Returns empty string if no sync has occurred or no ID was recorded.
+// This is used by autosync to stop pagination once already-seen entries are reached.
+func LastSeenID(db *sql.DB, source string) string {
+	var id string
+	row := db.QueryRow(`SELECT COALESCE(last_seen_id, '') FROM sync_log WHERE source = ?`, source)
+	if err := row.Scan(&id); err != nil {
+		return ""
+	}
+	return id
 }
 
 // UpdatePlexWatchDate updates the plex_watched_at field for a row identified

@@ -12,7 +12,7 @@ import (
 
 // DiaryEntry represents a single entry from the Letterboxd diary.
 type DiaryEntry struct {
-	FilmID    string `json:"filmId"`
+	ViewingID string `json:"viewingId"` // data-viewing-id — stable diary entry ID
 	Slug      string `json:"slug"`
 	Title     string `json:"title"`
 	Year      string `json:"year"`
@@ -25,8 +25,8 @@ var (
 	// Each diary row: <tr class="diary-entry-row ...">
 	diaryRowRe = regexp.MustCompile(`(?s)<tr[^>]+class="[^"]*diary-entry-row[^"]*"[^>]*>(.*?)</tr>`)
 
-	// data-film-id="149857"
-	filmIDRe = regexp.MustCompile(`data-film-id="(\d+)"`)
+	// data-viewing-id="1277296195" (on the <tr> tag)
+	viewingIDRe = regexp.MustCompile(`data-viewing-id="(\d+)"`)
 
 	// data-item-slug="gone-girl"
 	filmSlugRe = regexp.MustCompile(`data-item-slug="([^"]+)"`)
@@ -52,7 +52,8 @@ var (
 
 // FetchDiary scrapes the Letterboxd diary for the logged-in user, up to 60 days back.
 // A 3500ms cooldown is applied between page requests.
-func (c *Client) FetchDiary(username string) ([]DiaryEntry, error) {
+// stopAtID is a viewing ID at which pagination stops (used by autosync); pass "" to fetch the full window.
+func (c *Client) FetchDiary(username, stopAtID string) ([]DiaryEntry, error) {
 	var all []DiaryEntry
 	cutoff := time.Now().AddDate(0, 0, -60)
 	page := 1
@@ -94,10 +95,16 @@ func (c *Client) FetchDiary(username string) ([]DiaryEntry, error) {
 
 		done := false
 		for _, rowMatch := range rows {
-			row := rowMatch[1]
+			// Pass the full <tr>...</tr> match so parseDiaryRow can read
+			// attributes on the opening tag (e.g. data-viewing-id).
+			row := rowMatch[0]
 			entry := parseDiaryRow(row)
 			if entry == nil {
 				continue
+			}
+			if stopAtID != "" && entry.ViewingID == stopAtID {
+				done = true
+				break
 			}
 			t, err := time.Parse("2006-01-02", entry.WatchedOn)
 			if err == nil && t.Before(cutoff) {
@@ -120,12 +127,12 @@ func (c *Client) FetchDiary(username string) ([]DiaryEntry, error) {
 }
 
 func parseDiaryRow(row string) *DiaryEntry {
-	filmIDMatch := filmIDRe.FindStringSubmatch(row)
-	if filmIDMatch == nil {
+	viewingIDMatch := viewingIDRe.FindStringSubmatch(row)
+	if viewingIDMatch == nil {
 		return nil
 	}
 
-	entry := &DiaryEntry{FilmID: filmIDMatch[1]}
+	entry := &DiaryEntry{ViewingID: viewingIDMatch[1]}
 
 	if m := filmSlugRe.FindStringSubmatch(row); m != nil {
 		entry.Slug = m[1]
