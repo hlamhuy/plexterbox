@@ -224,6 +224,115 @@ function App() {
         }
     };
 
+    const handleFullSync = async () => {
+        setShowSyncModal(false);
+        const plexEvents = watchEvents.filter((e) => e.inPlex && !e.inLb);
+        const lbEvents = watchEvents.filter((e) => e.inLb && !e.inPlex);
+        if (
+            (plexEvents.length === 0 || !lbUser) &&
+            (lbEvents.length === 0 || !plexConnected)
+        )
+            return;
+
+        setError(null);
+        setImportResult(null);
+        setImportStatuses(null);
+
+        let totalImported = 0;
+        let totalSkipped = 0;
+        let totalTotal = 0;
+        const combinedStatuses: Record<number, string> = {};
+
+        // Plex → Letterboxd
+        if (plexEvents.length > 0 && lbUser) {
+            setLoadingMessage('Syncing Plex → Letterboxd...');
+            try {
+                const films: ImportFilm[] = plexEvents.map((e) => ({
+                    title: e.title,
+                    originalTitle: e.title,
+                    rating: e.plexRating || 0,
+                    review: null,
+                    year: e.year,
+                    imdbId: null,
+                    letterboxdURI: null,
+                    tmdbId: null,
+                    tags: null,
+                    watchedDate: (e.plexWatchedAt || e.watchedOn || '').slice(
+                        0,
+                        10,
+                    ),
+                    isICheckMoviesImport: false,
+                    rewatch: e.rewatch,
+                    creators: [],
+                }));
+                const result = await letterboxdImport(films);
+                plexEvents.forEach((e, idx) => {
+                    if (result.filmStatuses[idx])
+                        combinedStatuses[e.id] = result.filmStatuses[idx];
+                });
+                totalImported += result.imported;
+                totalSkipped += result.skipped;
+                totalTotal += result.total;
+            } catch (err) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : 'Failed to import to Letterboxd',
+                );
+            }
+        }
+
+        // Letterboxd → Plex
+        if (lbEvents.length > 0 && plexConnected) {
+            setLoadingMessage('Syncing Letterboxd → Plex...');
+            try {
+                const films: PlexImportFilm[] = lbEvents.map((e) => ({
+                    title: e.title,
+                    year: e.year,
+                    rating: e.lbRating || 0,
+                    watchedDate: e.lbWatchedOn || e.watchedOn || '',
+                }));
+                const result = await plexImport(films);
+                lbEvents.forEach((e, idx) => {
+                    if (result.filmStatuses[idx])
+                        combinedStatuses[e.id] = result.filmStatuses[idx];
+                });
+                totalImported += result.imported;
+                totalSkipped += result.skipped;
+                totalTotal += result.total;
+            } catch (err) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : 'Failed to import to Plex',
+                );
+            }
+        }
+
+        if (Object.keys(combinedStatuses).length > 0)
+            setImportStatuses(combinedStatuses);
+        if (totalTotal > 0)
+            setImportResult({
+                imported: totalImported,
+                skipped: totalSkipped,
+                total: totalTotal,
+            });
+
+        // Single refresh at the end
+        setLoadingMessage('Refreshing data...');
+        try {
+            const {
+                events: refreshed,
+                plexFetchedAt: pf,
+                lbFetchedAt: lf,
+            } = await syncData();
+            setWatchEvents(refreshed);
+            const latest = pf && lf ? (pf > lf ? pf : lf) : pf || lf;
+            if (latest) setLastFetched(formatTs(latest));
+        } catch {}
+        setLoadingMessage(null);
+    };
+
     return (
         <div className='min-h-screen bg-zinc-950 text-zinc-100'>
             <div className='max-w-5xl mx-auto px-4 py-8'>
@@ -253,10 +362,10 @@ function App() {
                 </div>
 
                 <AutoSyncPanel
-                        plexConnected={plexConnected}
-                        lbUser={lbUser}
-                        onSyncComplete={setWatchEvents}
-                    />
+                    plexConnected={plexConnected}
+                    lbUser={lbUser}
+                    onSyncComplete={setWatchEvents}
+                />
 
                 <button
                     onClick={handleFetchData}
@@ -390,7 +499,7 @@ function App() {
                         )}
                         hasLbOnly={watchEvents.some((e) => e.inLb && !e.inPlex)}
                         hasLbUser={!!lbUser}
-                        onFullSync={handlePlexToLb}
+                        onFullSync={handleFullSync}
                         onPlexToLb={handlePlexToLb}
                         onLbToPlex={handleLbToPlex}
                         onClose={() => setShowSyncModal(false)}
